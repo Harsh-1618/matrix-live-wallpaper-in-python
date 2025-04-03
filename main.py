@@ -7,116 +7,115 @@ import numpy as np
 class Streak:
     char_folder = "./chars"
 
-    def __init__(self, window_height, streak_pos, char_height, char_width):
+    def __init__(self,
+                window_height,
+                streak_x_pos,
+                char_height,
+                char_width):
         self.char_height = char_height
-        self.streak_pos = streak_pos
-        self.chars = [cv2.imread(os.path.join(Streak.char_folder, char)) for char in os.listdir(Streak.char_folder)]
-        self.chars = [cv2.resize(char, (char_width, char_height), interpolation=cv2.INTER_CUBIC) for char in self.chars]
-        for idx in range(len(self.chars)):
-            self.chars[idx][self.chars[idx] < 128] = 0
-            self.chars[idx][self.chars[idx] > 128] = 255
-            self.chars[idx][:,:,[0,2]] = 0
-        
-        self.num_chars = window_height // char_height
-        self.streak = np.zeros((self.num_chars * char_height, char_width, 3), dtype=np.uint8)
+        self.streak_x_pos = streak_x_pos
+        self.streak_y_pos = None
+        self.out = None
 
-        self.alive_chars = 0
-        self.dec_color = 10
-        self.start_remove_count_down = False
-        self.initial_color_val = 255
+        self.chars = [cv2.imread(os.path.join(Streak.char_folder, char)) for char in os.listdir(Streak.char_folder)]
+        if self.chars[0].shape != (char_height, char_width): # from my experiments it turns out cv2 doesn't check if the resize dim is same as original, so it should skip resize!
+            self.chars = [cv2.resize(char, (char_width, char_height), interpolation=cv2.INTER_CUBIC) for char in self.chars]
+        for idx in range(len(self.chars)):
+            self.chars[idx][self.chars[idx] < 128] = 0 # to make the image perfect monochromatic
+            self.chars[idx][self.chars[idx] > 128] = 255 # to make the image perfect monochromatic
+            self.chars[idx][:,:,[0,2]] = 0 # only green channel
+
+        self.streak_max_char_len = window_height // char_height
+        self.streak_char_len = random.randint(3, self.streak_max_char_len)
+        self.streak = np.zeros((self.streak_char_len*self.char_height, char_width, 3), dtype=np.uint8)
+
+        self.updates = 0
+        self.dec_color = 255 // self.streak_char_len # you can also try self.streak_char_len-1 but that'll produce too dark color for the last element
 
     def update(self):
-        self.streak = np.astype(self.streak, np.int16) # to let negative numbers come in
-        mask = self.streak[0:self.alive_chars*self.char_height, :, 1] > 0
-        self.streak[0:self.alive_chars*self.char_height, :, 1][mask] -= self.dec_color
-        neg_mask = self.streak[0:self.alive_chars*self.char_height, :, 1] < 0
-        self.streak[0:self.alive_chars*self.char_height, :, 1][neg_mask] = 0
-        self.streak = np.astype(self.streak, np.uint8) # changing back to image type 
+        if self.updates < self.streak_char_len:
+            mask = self.streak[0:self.updates*self.char_height, :, 1] > 0
+            self.streak[0:self.updates*self.char_height, :, 1][mask] -= self.dec_color
 
-        if self.alive_chars < self.num_chars:
             char = np.copy(random.choice(self.chars))
-            self.streak[self.alive_chars*self.char_height:(self.alive_chars+1)*self.char_height, :, :] = char
+            self.streak[self.updates*self.char_height:(self.updates+1)*self.char_height, :, :] = char
 
-            self.alive_chars += 1
+            self.streak_y_pos = 0
+            self.out = self.streak[0:(self.updates+1)*self.char_height, :, :]
+
+        elif self.updates < self.streak_max_char_len:
+            self.streak[0:(self.streak_char_len-1)*self.char_height, :, :] = self.streak[self.char_height:, :, :]
+            mask = self.streak[0:(self.streak_char_len-1)*self.char_height, :, 1] > 0
+            self.streak[0:(self.streak_char_len-1)*self.char_height, :, 1][mask] -= self.dec_color
+
+            char = np.copy(random.choice(self.chars))
+            self.streak[(self.streak_char_len-1)*self.char_height:, :, :] = char
+
+            self.streak_y_pos += self.char_height
+            self.out = self.streak
+
         else:
-            self.start_remove_count_down = True
+            self.streak = self.streak[self.char_height:, :, :]
+            mask = self.streak[:, :, 1] > 0
+            self.streak[:, :, 1][mask] -= self.dec_color
 
-        if self.start_remove_count_down:
-            self.initial_color_val -= self.dec_color
-            if self.initial_color_val < 0:
-                return self.streak_pos, None
+            self.streak_y_pos += self.char_height
+            self.out = self.streak
 
-        return self.streak_pos, self.streak
+        self.updates += 1
 
+        return self.streak_x_pos, self.streak_y_pos, self.out
 
-window_height = 230
-window_width = 1200
-
-window = np.zeros((window_height, window_width, 3), dtype=np.uint8)
-
-streak_list = []
-while True:
-    print(len(streak_list))
-    initiate_streaks = random.randint(0, 2)
-    for i in range(initiate_streaks):
-        pos = random.randint(0, window_width-20)
-        streak_list.append(Streak(window_height, pos, 20, 20))
-
-    for s in streak_list:
-        pos, streak = s.update()
-        if streak is None:
-            streak_list.remove(s)
-            continue
-
-        window[0:streak.shape[0], pos:pos+streak.shape[1], :] = streak
-
-    cv2.imshow('matrix', window)
-    time.sleep(0.02)
-    # time.sleep(1)
-
-    if cv2.waitKey(1) == ord('q'):
-        break
+    def __repr__(self):
+        return f"Streak at x position of {self.streak_x_pos}"
 
 
-######################################
+def run_matrix_flat(window_height=500,
+                window_width=1200,
+                char_height=20,
+                char_width=20,
+                max_new_streaks=2,
+                spf=0.05):
+    """
+    spf: seconds per frame, not exact at all since the computation takes time as well
+    """
+    window = np.zeros((window_height, window_width, 3), dtype=np.uint8)
+    random_positions = (window_width // char_width) - 1
 
-# window_height = 300
-# window_width = 400
+    streak_list = []
+    x_pos_list = []
+    while True:
+        if (random_positions+1 - len(x_pos_list)) > (max_new_streaks-1):
+            initiate_streaks = random.randint(0, max_new_streaks) # [0,max_new_streaks]
+        else:
+            initiate_streaks = random_positions+1 - len(x_pos_list)
 
-# window = np.zeros((window_height, window_width, 3), dtype=np.uint8)
+        for i in range(initiate_streaks):
+            rand_x_pos = random.randint(0, random_positions) * char_width
+            while rand_x_pos in x_pos_list:
+                rand_x_pos = random.randint(0, random_positions) * char_width
+            x_pos_list.append(rand_x_pos)
 
-# line_pos = 120
-# color_list = []
+            streak_list.append(Streak(window_height, rand_x_pos, char_height, char_width))
 
-# chars = [cv2.imread(os.path.join("./chars", char)) for char in os.listdir("chars")]
-# chars = [cv2.resize(char, (20,20), interpolation=cv2.INTER_CUBIC) for char in chars]
-# for idx in range(len(chars)):
-#     chars[idx][:,:,[0,2]] = 0
+        for s in streak_list[::-1]: # reverse traverse since we are removing elements while traversing, else it'll create annoying bug
+            x_pos, y_pos, streak = s.update()
+            if streak.shape[0] == 0:
+                streak_list.remove(s)
+                x_pos_list.remove(x_pos)
+                continue
 
-# char_idx = 0
-# while True:
-#     for cidx in color_list:
-#         real_cidx = len(color_list) - cidx
-#         patch = window[20*(real_cidx):20*(real_cidx+1), line_pos:line_pos+20][:,:,1]
-#         patch_color = int(255-cidx*40)
-#         if patch_color < 0:
-#             patch_color = 0
-#         window[20*(real_cidx):20*(real_cidx+1), line_pos:line_pos+20][:,:,1] = np.where(patch != 0, patch_color, 0)
+            window[y_pos:y_pos+streak.shape[0], x_pos:x_pos+streak.shape[1], :] = streak
 
-#     height_left = window_height - 20*(char_idx)
+        cv2.imshow('Matrix', window)
+        time.sleep(spf)
+        window[:, :, :] = 0 # resetting the window
 
-#     idx = np.random.randint(0, 10, (1,))[0]
-#     char = np.copy(chars[idx])
+        if cv2.waitKey(1) == ord('q'):
+            break
 
-#     if height_left > 20:
-#         window[20*(char_idx):20*(char_idx+1), line_pos:line_pos+char.shape[1]] = char
+def main():
+    run_matrix_flat(max_new_streaks=3)
 
-#     char_idx += 1
-#     color_list.append(char_idx)
-#     cv2.imshow('matrix', window)
-#     time.sleep(0.05)
-
-#     if cv2.waitKey(1) == ord('q'):
-#         break
-
-
+if __name__ == "__main__":
+    main()
