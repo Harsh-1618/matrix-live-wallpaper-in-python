@@ -146,8 +146,47 @@ def run_matrix_flat(window_height=720,
         if cv2.waitKey(1) == ord('q'):
             break
 
+def run_matrix_overlap(window_height=720,
+                window_width=1280,
+                max_new_streaks=2,
+                spf=0.05,
+                sizes=((20,20),(30,30),(40,40))):
+    """
+    spf: seconds per frame, not exact at all since the computation takes time as well
+    sizes: tuple of tuple of hight,width of characters that'll be displayed in matrix
+    """
+    window = np.zeros((window_height, window_width, 3), dtype=np.uint8)
+    max_x_position = window_width - max(s[1] for s in sizes)
+
+    streak_list = []
+    while True:
+        initiate_streaks = random.randint(0, max_new_streaks)
+        for i in range(initiate_streaks):
+            rand_x_pos = random.randint(0, max_x_position)
+            rand_hw = random.choice(sizes)
+
+            s = Streak(window_height, rand_x_pos, rand_hw[0], rand_hw[1])
+            streak_list.append(s)
+
+        for s in streak_list[::-1]: # reverse traverse since we are removing elements while traversing, else it'll create annoying bug
+            x_pos, y_pos, streak = s.update()
+            if streak.shape[0] == 0:
+                streak_list.remove(s)
+                continue
+
+            # adding the streak instead of overriding so as to overlap
+            window[y_pos:y_pos+streak.shape[0], x_pos:x_pos+streak.shape[1], :] += streak
+
+        cv2.imshow('Matrix', window)
+        time.sleep(spf)
+        window[:, :, :] = 0 # resetting the window
+
+        if cv2.waitKey(1) == ord('q'):
+            break
+
 def main():
-    run_matrix_flat(max_new_streaks=5, spf=0.05, consecutive_streak=True)
+    # run_matrix_flat(max_new_streaks=5, spf=0.05, consecutive_streak=True)
+    run_matrix_overlap(max_new_streaks=2, spf=0.05)
 
 if __name__ == "__main__":
     main()
