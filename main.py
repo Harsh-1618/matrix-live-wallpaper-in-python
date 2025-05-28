@@ -5,7 +5,7 @@ import random
 import numpy as np
 
 class Streak:
-    char_folder = "./chars"
+    char_folder = "./characters_seperated/english_lower"
 
     def __init__(self,
                 window_height,
@@ -18,11 +18,10 @@ class Streak:
         self.out = None
 
         self.chars = [cv2.imread(os.path.join(Streak.char_folder, char)) for char in os.listdir(Streak.char_folder)]
-        if self.chars[0].shape != (char_height, char_width): # from my experiments it turns out cv2 doesn't check if the resize dim is same as original, so it should skip resize!
-            self.chars = [cv2.resize(char, (char_width, char_height), interpolation=cv2.INTER_CUBIC) for char in self.chars]
+        assert len(self.chars[0].shape) == 3, "input character is not 3 channel!"
+        if self.chars[0].shape != (char_height, char_width, 3): # from my experiments it turns out cv2 doesn't check if the resize dim is same as original, so it should skip resize!
+            self.chars = [cv2.resize(char, (char_width, char_height), interpolation=cv2.INTER_NEAREST) for char in self.chars] # not using INTER_CUBIC as it'll introduce values other than 0 and 255
         for idx in range(len(self.chars)):
-            self.chars[idx][self.chars[idx] < 128] = 0 # to make the image perfect monochromatic
-            self.chars[idx][self.chars[idx] > 128] = 255 # to make the image perfect monochromatic
             self.chars[idx][:,:,[0,2]] = 0 # only green channel
 
         self.streak_max_char_len = window_height // char_height
@@ -90,7 +89,7 @@ def run_matrix_flat(window_height=720,
                 char_height=20,
                 char_width=20,
                 max_new_streaks=2,
-                spf=0.05,
+                spf=5e-2,
                 consecutive_streak=False):
     """
     spf: seconds per frame, not exact at all since the computation takes time as well
@@ -149,7 +148,7 @@ def run_matrix_flat(window_height=720,
 def run_matrix_overlap(window_height=720,
                 window_width=1280,
                 max_new_streaks=2,
-                spf=0.05,
+                spf=5e-2,
                 sizes=((20,20),(30,30),(40,40))):
     """
     spf: seconds per frame, not exact at all since the computation takes time as well
@@ -185,8 +184,8 @@ def run_matrix_overlap(window_height=720,
             break
 
 def main():
-    # run_matrix_flat(max_new_streaks=5, spf=0.05, consecutive_streak=True)
-    run_matrix_overlap(max_new_streaks=2, spf=0.05)
+    # run_matrix_flat(max_new_streaks=5, spf=5e-2, consecutive_streak=True)
+    run_matrix_overlap(max_new_streaks=2, spf=5e-2)
 
 if __name__ == "__main__":
     main()

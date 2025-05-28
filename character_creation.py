@@ -63,7 +63,7 @@ def main(characters_path, output_folder_name, resize_height, resize_width):
         os.makedirs(out_fol)
 
     for i, character in enumerate(characters):
-        resize_character = cv2.resize(character, (resize_width, resize_height), interpolation=cv2.INTER_CUBIC)
+        resize_character = cv2.resize(character, (resize_width, resize_height), interpolation=cv2.INTER_NEAREST) # not using INTER_CUBIC as it'll introduce values other than 0 and 255
         cv2.imwrite(os.path.join(out_fol, f"{i}.png"), resize_character)
 
 
