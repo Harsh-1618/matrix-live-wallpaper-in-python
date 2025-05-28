@@ -5,7 +5,7 @@ Note that the characters of whatever language you are using should not be
 discontinuous horizontally, as in horizontally flipped 'i', where the dot
 will be considered as a seperate character by the program.
 However, vertical discontinuous characters are fine.
-Also, Ensure that image is white text on black background!!
+Also, ENSURE that image is white text (255,255,255) on black (0,0,0) background!!
 and capture the image such that the individual characters are 50x40 to
 minimize resize destortion.
 """

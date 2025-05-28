@@ -251,14 +251,15 @@ def run_matrix_overlap(window_height=720,
             break
 
 def main():
-    character_folders = ("english_digit", "english_lower", "english_capital")
+    # character_folders = ("english_digit", "english_lower", "english_capital")
+    character_folders = ("sanskrit_digit", "sanskrit_vowel_limited", "sanskrit_consonant_1", "sanskrit_consonant_2")
 
     window_color = (77, 59, 53) # BGR, not RGB!
-    character_color = (169, 65, 245) # BGR, not RGB!
+    character_color = (169, 65, 245)
     run_matrix_flat(window_color=window_color, character_color=character_color, max_new_streaks=5, spf=3e-2, consecutive_streak=True, character_folders=character_folders)
 
-    window_color = (0, 0, 0) # BGR, not RGB!
-    character_color = (150, 100, 10) # BGR, not RGB!
+    window_color = (0, 0, 0)
+    character_color = (150, 100, 10)
     run_matrix_overlap(window_color=window_color, character_color=character_color, max_new_streaks=2, spf=5e-2, character_folders=character_folders)
 
 if __name__ == "__main__":
