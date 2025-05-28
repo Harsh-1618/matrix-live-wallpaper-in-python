@@ -3,12 +3,14 @@ import cv2
 import time
 import random 
 import numpy as np
+from copy import deepcopy
 
 
-def character_maker(sizes, char_folders):
+def character_maker(sizes, char_folders, window_color, character_color):
     character_dict = {}
     for size in sizes:
         char_height, char_width = size
+        bw_characters_list = []
         characters_list = []
         for folder in char_folders:
             folder_path = os.path.join("./characters_seperated", folder)
@@ -17,10 +19,16 @@ def character_maker(sizes, char_folders):
 
             if chars[0].shape != (char_height, char_width, 3): # from my experiments it turns out cv2 doesn't check if the resize dim is same as original, so it should skip resize!
                 chars = [cv2.resize(char, (char_width, char_height), interpolation=cv2.INTER_NEAREST) for char in chars] # not using INTER_CUBIC as it'll introduce values other than 0 and 255
+            
+            bw_chars = deepcopy(chars)
             for idx in range(len(chars)):
-                chars[idx][:,:,[0,2]] = 0 # only green channel non zero
+                character_mask = chars[idx][:,:,0] == 255
+                chars[idx][:, :, :] = np.array(window_color)
+                chars[idx][character_mask, :] = np.array(character_color)
+
+            bw_characters_list.extend(bw_chars)
             characters_list.extend(chars)
-        character_dict[size] = characters_list
+        character_dict[size] = (bw_characters_list, characters_list)
     return character_dict
 
 
@@ -30,39 +38,60 @@ class Streak:
                 streak_x_pos,
                 char_height,
                 char_width,
-                chars):
+                chars,
+                window_color,
+                character_color):
         self.char_height = char_height
         self.streak_x_pos = streak_x_pos
-        self.chars = chars
+        self.bw_chars = chars[0]
+        self.chars = chars[1]
+        self.len_chars = len(self.chars)
         self.streak_y_pos = None
         self.out = None
 
         self.streak_max_char_len = window_height // char_height
         self.streak_char_len = random.randint(3, self.streak_max_char_len)
+        self.bw_streak = np.zeros((self.streak_char_len*self.char_height, char_width, 3), dtype=np.uint8)
         self.streak = np.zeros((self.streak_char_len*self.char_height, char_width, 3), dtype=np.uint8)
 
         self.updates = 0
-        self.dec_color = 255 // self.streak_char_len # you can also try self.streak_char_len-1 but that'll produce too dark color for the last element
+        self.dec_color = (((np.array(character_color) - np.array(window_color)) / self.streak_char_len).astype(np.int16)).astype(np.uint8) # you can also try self.streak_char_len-1 but that'll produce too dark color for the last element
 
         self.remove_x_pos = False
 
     def update(self):
         if self.updates < self.streak_char_len:
-            mask = self.streak[0:self.updates*self.char_height, :, 1] > 0
-            self.streak[0:self.updates*self.char_height, :, 1][mask] -= self.dec_color
+            mask = self.bw_streak[0:self.updates*self.char_height, :, 0] == 255
+            self.streak[0:self.updates*self.char_height, :, 0][mask] -= self.dec_color[0]
+            self.streak[0:self.updates*self.char_height, :, 1][mask] -= self.dec_color[1]
+            self.streak[0:self.updates*self.char_height, :, 2][mask] -= self.dec_color[2]
+            # self.streak[mask, :] -= self.dec_color
 
-            char = np.copy(random.choice(self.chars))
+            rnd_char_idx = np.random.randint(0, self.len_chars)
+            bw_char = np.copy(self.bw_chars[rnd_char_idx])
+            char = np.copy(self.chars[rnd_char_idx])
+            
+            self.bw_streak[self.updates*self.char_height:(self.updates+1)*self.char_height, :, :] = bw_char
             self.streak[self.updates*self.char_height:(self.updates+1)*self.char_height, :, :] = char
 
             self.streak_y_pos = 0
             self.out = self.streak[0:(self.updates+1)*self.char_height, :, :]
 
         elif self.updates < self.streak_max_char_len:
+            self.bw_streak[0:(self.streak_char_len-1)*self.char_height, :, :] = self.bw_streak[self.char_height:, :, :]
             self.streak[0:(self.streak_char_len-1)*self.char_height, :, :] = self.streak[self.char_height:, :, :]
-            mask = self.streak[0:(self.streak_char_len-1)*self.char_height, :, 1] > 0
-            self.streak[0:(self.streak_char_len-1)*self.char_height, :, 1][mask] -= self.dec_color
 
-            char = np.copy(random.choice(self.chars))
+            mask = self.bw_streak[0:(self.streak_char_len-1)*self.char_height, :, 0] == 255
+            self.streak[0:(self.streak_char_len-1)*self.char_height, :, 0][mask] -= self.dec_color[0]
+            self.streak[0:(self.streak_char_len-1)*self.char_height, :, 1][mask] -= self.dec_color[1]
+            self.streak[0:(self.streak_char_len-1)*self.char_height, :, 2][mask] -= self.dec_color[2]
+            # self.streak[mask, :] -= self.dec_color
+
+            rnd_char_idx = np.random.randint(0, self.len_chars)
+            bw_char = np.copy(self.bw_chars[rnd_char_idx])
+            char = np.copy(self.chars[rnd_char_idx])
+
+            self.bw_streak[(self.streak_char_len-1)*self.char_height:, :, :] = bw_char
             self.streak[(self.streak_char_len-1)*self.char_height:, :, :] = char
 
             self.streak_y_pos += self.char_height
@@ -72,9 +101,14 @@ class Streak:
             # since now we'll be traversing down.
 
         else:
+            self.bw_streak = self.bw_streak[self.char_height:, :, :]
             self.streak = self.streak[self.char_height:, :, :]
-            mask = self.streak[:, :, 1] > 0
-            self.streak[:, :, 1][mask] -= self.dec_color
+
+            mask = self.bw_streak[:, :, 0] == 255
+            self.streak[:, :, 0][mask] -= self.dec_color[0]
+            self.streak[:, :, 1][mask] -= self.dec_color[1]
+            self.streak[:, :, 2][mask] -= self.dec_color[2]
+            # self.streak[mask, :] -= self.dec_color
 
             self.streak_y_pos += self.char_height
             self.out = self.streak
@@ -99,6 +133,8 @@ class Streak:
 
 def run_matrix_flat(window_height=720,
                 window_width=1280,
+                window_color=(0,0,0),
+                character_color=(0,255,0),
                 char_height=20,
                 char_width=20,
                 max_new_streaks=2,
@@ -110,7 +146,7 @@ def run_matrix_flat(window_height=720,
     consecutive_streak: if False, one column will only contain one streak till it dies,
                         if True, on column can contain more than one streak
     """
-    character_dict = character_maker(((char_height,char_width),), character_folders)
+    character_dict = character_maker(((char_height,char_width),), character_folders, window_color, character_color)
     window = np.zeros((window_height, window_width, 3), dtype=np.uint8)
     random_positions = (window_width // char_width) - 1
 
@@ -130,7 +166,7 @@ def run_matrix_flat(window_height=720,
                 rand_x_pos = random.randint(0, random_positions) * char_width
             x_pos_list.append(rand_x_pos)
 
-            s = Streak(window_height, rand_x_pos, char_height, char_width, character_dict[(char_height,char_width)])
+            s = Streak(window_height, rand_x_pos, char_height, char_width, character_dict[(char_height,char_width)], window_color, character_color)
             streak_list.append(s)
             if consecutive_streak:
                 x_pos_del_dict[s] = True
@@ -155,13 +191,15 @@ def run_matrix_flat(window_height=720,
 
         cv2.imshow('Matrix', window)
         time.sleep(spf)
-        window[:, :, :] = 0 # resetting the window
+        window[:, :, :] = np.array(window_color) # resetting the window
 
         if cv2.waitKey(1) == ord('q'):
             break
 
 def run_matrix_overlap(window_height=720,
                 window_width=1280,
+                window_color=(0,0,0),
+                character_color=(0,255,0),
                 max_new_streaks=2,
                 spf=5e-2,
                 sizes=((20,20),(30,30),(40,40)),
@@ -170,7 +208,7 @@ def run_matrix_overlap(window_height=720,
     spf: seconds per frame, not exact at all since the computation takes time as well
     sizes: tuple of tuple of hight,width of characters that'll be displayed in matrix
     """
-    character_dict = character_maker(sizes, character_folders)
+    character_dict = character_maker(sizes, character_folders, window_color, character_color)
     window = np.zeros((window_height, window_width, 3), dtype=np.uint8)
     max_x_position = window_width - max(s[1] for s in sizes)
 
@@ -181,7 +219,7 @@ def run_matrix_overlap(window_height=720,
             rand_x_pos = random.randint(0, max_x_position)
             rand_hw = random.choice(sizes)
 
-            s = Streak(window_height, rand_x_pos, rand_hw[0], rand_hw[1], character_dict[(rand_hw[0],rand_hw[1])])
+            s = Streak(window_height, rand_x_pos, rand_hw[0], rand_hw[1], character_dict[(rand_hw[0],rand_hw[1])], window_color, character_color)
             streak_list.append(s)
 
         for s in streak_list[::-1]: # reverse traverse since we are removing elements while traversing, else it'll create annoying bug
@@ -195,15 +233,17 @@ def run_matrix_overlap(window_height=720,
 
         cv2.imshow('Matrix', window)
         time.sleep(spf)
-        window[:, :, :] = 0 # resetting the window
+        window[:, :, :] = np.array(window_color) # resetting the window
 
         if cv2.waitKey(1) == ord('q'):
             break
 
 def main():
-    character_folders = ("english_digit", "english_lower", "english_capital")
-    run_matrix_flat(max_new_streaks=5, spf=5e-2, consecutive_streak=True, character_folders=character_folders)
-    # run_matrix_overlap(max_new_streaks=2, spf=5e-2, character_folders=character_folders)
+    window_color = (255, 255, 255) # BGR, not RGB!
+    character_color = (0, 255, 0) # BGR, not RGB!
+    # character_folders = ("english_digit", "english_lower", "english_capital")
+    run_matrix_flat(window_color=window_color, character_color=character_color, max_new_streaks=5, spf=5e-2, consecutive_streak=True, character_folders=character_folders)
+    run_matrix_overlap(window_color=window_color, character_color=character_color, max_new_streaks=2, spf=5e-2, character_folders=character_folders)
 
 if __name__ == "__main__":
     main()
