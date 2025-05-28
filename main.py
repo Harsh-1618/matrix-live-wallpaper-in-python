@@ -4,25 +4,38 @@ import time
 import random 
 import numpy as np
 
-class Streak:
-    char_folder = "./characters_seperated/english_lower"
 
+def character_maker(sizes, char_folders):
+    character_dict = {}
+    for size in sizes:
+        char_height, char_width = size
+        characters_list = []
+        for folder in char_folders:
+            folder_path = os.path.join("./characters_seperated", folder)
+            chars = [cv2.imread(os.path.join(folder_path, char_file), cv2.IMREAD_COLOR) for char_file in os.listdir(folder_path)]
+            assert len(chars[0].shape) == 3, "input character does not have 3 channels!"
+
+            if chars[0].shape != (char_height, char_width, 3): # from my experiments it turns out cv2 doesn't check if the resize dim is same as original, so it should skip resize!
+                chars = [cv2.resize(char, (char_width, char_height), interpolation=cv2.INTER_NEAREST) for char in chars] # not using INTER_CUBIC as it'll introduce values other than 0 and 255
+            for idx in range(len(chars)):
+                chars[idx][:,:,[0,2]] = 0 # only green channel non zero
+            characters_list.extend(chars)
+        character_dict[size] = characters_list
+    return character_dict
+
+
+class Streak:
     def __init__(self,
                 window_height,
                 streak_x_pos,
                 char_height,
-                char_width):
+                char_width,
+                chars):
         self.char_height = char_height
         self.streak_x_pos = streak_x_pos
+        self.chars = chars
         self.streak_y_pos = None
         self.out = None
-
-        self.chars = [cv2.imread(os.path.join(Streak.char_folder, char)) for char in os.listdir(Streak.char_folder)]
-        assert len(self.chars[0].shape) == 3, "input character is not 3 channel!"
-        if self.chars[0].shape != (char_height, char_width, 3): # from my experiments it turns out cv2 doesn't check if the resize dim is same as original, so it should skip resize!
-            self.chars = [cv2.resize(char, (char_width, char_height), interpolation=cv2.INTER_NEAREST) for char in self.chars] # not using INTER_CUBIC as it'll introduce values other than 0 and 255
-        for idx in range(len(self.chars)):
-            self.chars[idx][:,:,[0,2]] = 0 # only green channel
 
         self.streak_max_char_len = window_height // char_height
         self.streak_char_len = random.randint(3, self.streak_max_char_len)
@@ -90,12 +103,14 @@ def run_matrix_flat(window_height=720,
                 char_width=20,
                 max_new_streaks=2,
                 spf=5e-2,
-                consecutive_streak=False):
+                consecutive_streak=False,
+                character_folders=("english_lower",)):
     """
     spf: seconds per frame, not exact at all since the computation takes time as well
     consecutive_streak: if False, one column will only contain one streak till it dies,
                         if True, on column can contain more than one streak
     """
+    character_dict = character_maker(((char_height,char_width),), character_folders)
     window = np.zeros((window_height, window_width, 3), dtype=np.uint8)
     random_positions = (window_width // char_width) - 1
 
@@ -115,7 +130,7 @@ def run_matrix_flat(window_height=720,
                 rand_x_pos = random.randint(0, random_positions) * char_width
             x_pos_list.append(rand_x_pos)
 
-            s = Streak(window_height, rand_x_pos, char_height, char_width)
+            s = Streak(window_height, rand_x_pos, char_height, char_width, character_dict[(char_height,char_width)])
             streak_list.append(s)
             if consecutive_streak:
                 x_pos_del_dict[s] = True
@@ -149,11 +164,13 @@ def run_matrix_overlap(window_height=720,
                 window_width=1280,
                 max_new_streaks=2,
                 spf=5e-2,
-                sizes=((20,20),(30,30),(40,40))):
+                sizes=((20,20),(30,30),(40,40)),
+                character_folders=("english_lower",)):
     """
     spf: seconds per frame, not exact at all since the computation takes time as well
     sizes: tuple of tuple of hight,width of characters that'll be displayed in matrix
     """
+    character_dict = character_maker(sizes, character_folders)
     window = np.zeros((window_height, window_width, 3), dtype=np.uint8)
     max_x_position = window_width - max(s[1] for s in sizes)
 
@@ -164,7 +181,7 @@ def run_matrix_overlap(window_height=720,
             rand_x_pos = random.randint(0, max_x_position)
             rand_hw = random.choice(sizes)
 
-            s = Streak(window_height, rand_x_pos, rand_hw[0], rand_hw[1])
+            s = Streak(window_height, rand_x_pos, rand_hw[0], rand_hw[1], character_dict[(rand_hw[0],rand_hw[1])])
             streak_list.append(s)
 
         for s in streak_list[::-1]: # reverse traverse since we are removing elements while traversing, else it'll create annoying bug
@@ -184,8 +201,9 @@ def run_matrix_overlap(window_height=720,
             break
 
 def main():
-    # run_matrix_flat(max_new_streaks=5, spf=5e-2, consecutive_streak=True)
-    run_matrix_overlap(max_new_streaks=2, spf=5e-2)
+    character_folders = ("english_digit", "english_lower", "english_capital")
+    run_matrix_flat(max_new_streaks=5, spf=5e-2, consecutive_streak=True, character_folders=character_folders)
+    # run_matrix_overlap(max_new_streaks=2, spf=5e-2, character_folders=character_folders)
 
 if __name__ == "__main__":
     main()
