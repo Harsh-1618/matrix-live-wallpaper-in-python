@@ -56,6 +56,11 @@ class Streak:
 
         self.updates = 0
         self.dec_color = (((np.array(character_color) - np.array(window_color)) / self.streak_char_len).astype(np.int16)).astype(np.uint8) # you can also try self.streak_char_len-1 but that'll produce too dark color for the last element
+        # note that it's fine to do int16 and then int8, you might be concerned about rollover of -ve
+        # numbers after uint8, but it turns out that it cancels away when we use self.dec_color in update method
+        # Having said that, i have only tested it on few examples and am not sure if it works for every case,
+        # if it doesn't, just remove np.uint8 above and make self.streak np.int16 and then copy self.streak
+        # to self.out and cast self.out as uint8.
 
         self.remove_x_pos = False
 
@@ -142,12 +147,16 @@ def run_matrix_flat(window_height=720,
                 consecutive_streak=False,
                 character_folders=("english_lower",)):
     """
+    NOTE: you might notice that the fainting is not always in the background color direction, this is cause we are using simple difference
+    between foreground and background color which does not guarrantee smooth transition between the two colors i guess. but it adds a dope effect tbh
+
     spf: seconds per frame, not exact at all since the computation takes time as well
     consecutive_streak: if False, one column will only contain one streak till it dies,
                         if True, on column can contain more than one streak
     """
     character_dict = character_maker(((char_height,char_width),), character_folders, window_color, character_color)
     window = np.zeros((window_height, window_width, 3), dtype=np.uint8)
+    window[:, :, :] = np.array(window_color)
     random_positions = (window_width // char_width) - 1
 
     streak_list = []
@@ -205,11 +214,14 @@ def run_matrix_overlap(window_height=720,
                 sizes=((20,20),(30,30),(40,40)),
                 character_folders=("english_lower",)):
     """
+    NOTE: Do not run overlap version with background other than (0,0,0) as it'll cause interference in overlapping and mess up
+
     spf: seconds per frame, not exact at all since the computation takes time as well
     sizes: tuple of tuple of hight,width of characters that'll be displayed in matrix
     """
     character_dict = character_maker(sizes, character_folders, window_color, character_color)
     window = np.zeros((window_height, window_width, 3), dtype=np.uint8)
+    window[:, :, :] = np.array(window_color)
     max_x_position = window_width - max(s[1] for s in sizes)
 
     streak_list = []
@@ -239,10 +251,14 @@ def run_matrix_overlap(window_height=720,
             break
 
 def main():
-    window_color = (255, 255, 255) # BGR, not RGB!
-    character_color = (0, 255, 0) # BGR, not RGB!
-    # character_folders = ("english_digit", "english_lower", "english_capital")
-    run_matrix_flat(window_color=window_color, character_color=character_color, max_new_streaks=5, spf=5e-2, consecutive_streak=True, character_folders=character_folders)
+    character_folders = ("english_digit", "english_lower", "english_capital")
+
+    window_color = (77, 59, 53) # BGR, not RGB!
+    character_color = (169, 65, 245) # BGR, not RGB!
+    run_matrix_flat(window_color=window_color, character_color=character_color, max_new_streaks=5, spf=3e-2, consecutive_streak=True, character_folders=character_folders)
+
+    window_color = (0, 0, 0) # BGR, not RGB!
+    character_color = (150, 100, 10) # BGR, not RGB!
     run_matrix_overlap(window_color=window_color, character_color=character_color, max_new_streaks=2, spf=5e-2, character_folders=character_folders)
 
 if __name__ == "__main__":
